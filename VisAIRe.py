@@ -56,11 +56,11 @@ class VisAIReWidget:
     # reload button
     # (use this during development, but remove it when delivering
     #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "VisAIRe Reload"
-    self.layout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
+    #self.reloadButton = qt.QPushButton("Reload")
+    #self.reloadButton.toolTip = "Reload this module."
+    #self.reloadButton.name = "VisAIRe Reload"
+    #self.layout.addWidget(self.reloadButton)
+    #self.reloadButton.connect('clicked()', self.onReload)
 
     # reload and test button
     # (use this during development, but remove it when delivering
@@ -70,6 +70,11 @@ class VisAIReWidget:
     #self.layout.addWidget(self.reloadAndTestButton)
     #self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
 
+    # entry for the rater name
+    label = qt.QLabel('Rater name:')
+    self.raterName = qt.QLineEdit()
+    self.layout.addWidget(label)
+    self.layout.addWidget(self.raterName)
     
     # Configuration file picker
     label = qt.QLabel('Configuration file:')
@@ -77,6 +82,28 @@ class VisAIReWidget:
     self.configFilePicker.connect('clicked()',self.onConfigFileSelected)
     self.layout.addWidget(label)
     self.layout.addWidget(self.configFilePicker)
+
+    # Opacity control
+    label = qt.QLabel('Foreground/Background opacity:')
+    self.opacitySlider = ctk.ctkSliderWidget()
+    self.opacitySlider.connect('valueChanged(double)',self.onOpacityChangeRequested)
+    self.opacitySlider.minimum = 0.
+    self.opacitySlider.maximum = 1.
+    self.opacitySlider.decimals = 1
+    self.opacitySlider.singleStep = 0.1
+    self.layout.addWidget(label)
+    self.layout.addWidget(self.opacitySlider)
+
+    # Slice control
+    #label = qt.QLabel('Slice selector:')
+    #self.sliceSlider = ctk.ctkSliderWidget()
+    #self.sliceSlider.connect('valueChanged(double)',self.onSliceChangeRequested)
+    #self.sliceSlider.minimum = 0.
+    #self.sliceSlider.maximum = 1.
+    #self.sliceSlider.decimals = 1
+    #self.sliceSlider.singleStep = 0.1
+    #self.layout.addWidget(label)
+    #self.layout.addWidget(self.opacitySlider)
 
     # Collapsible button to keep the content of the form
     self.evaluationFrame = ctk.ctkCollapsibleButton()
@@ -124,6 +151,7 @@ class VisAIReWidget:
     self.perVolumeForms = []
     self.fixedVolumes = []
     self.registeredVolumes = []
+    self.caseName = None
 
     # add custom layout for comparing two pairs of volumes
     compareViewTwoRows ="<layout type=\"vertical\">"
@@ -157,6 +185,11 @@ class VisAIReWidget:
       if sn.GetName() == 'Compare1':
         self.compare1 = scn
   
+  def onOpacityChangeRequested(self,value):
+    print value
+    self.compare0.SetForegroundOpacity(value)
+    self.compare1.SetForegroundOpacity(value)
+
   def entrySelected(self, name):
     entry = self.formEntries[int(name)]
     if entry.collapsed == True:
@@ -225,6 +258,7 @@ class VisAIReWidget:
         #  item = string.split(line,';')
         #  self.questions[item[0]] = item[1]
         elif mode == 'CaseName':
+          self.caseName = line
           self.evaluationFrame.text = "Assessment Form for "+line
     
     # populate the assessment form    
@@ -270,7 +304,27 @@ class VisAIReWidget:
     '''
       
   def onDoneButtonClicked(self):
-    print("Done clicked")
+    path = self.configFile[0:string.rfind(self.configFile,'/')]
+    reportName = path+'/'+self.caseName+'-'+self.raterName.text+'-report.log'
+    report = open(reportName,'w')
+    report.write(self.configFile+'\n')
+    for i in range(len(self.fixedVolumes)):
+      report.write(self.fixedVolumes[i].GetName()+';')
+      item = 2
+      print 'num children: ',len(self.formEntries[i].children())
+      for (q,c) in self.questions.items():
+        report.write(q+';')
+        widget = self.formEntries[i].children()[item]
+        print widget
+        if c == 'binary':
+          checked = str(int(widget.checked))
+          report.write(str(checked)+';')
+        elif c == 'numeric':
+          error = str(widget.text)
+          report.write(error+';')
+        item = item+2
+      report.write('\n')
+    report.close()
 
   def addBinaryEntry(self,question,layout):
     self.questions[question] = 'binary'
