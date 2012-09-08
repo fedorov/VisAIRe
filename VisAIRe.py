@@ -65,10 +65,10 @@ class VisAIReWidget:
     # reload and test button
     # (use this during development, but remove it when delivering
     #  your module to users)
-    self.reloadAndTestButton = qt.QPushButton("Reload and Test")
-    self.reloadAndTestButton.toolTip = "Reload this module and then run the self tests."
-    self.layout.addWidget(self.reloadAndTestButton)
-    self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
+    #self.reloadAndTestButton = qt.QPushButton("Reload and Test")
+    #self.reloadAndTestButton.toolTip = "Reload this module and then run the self tests."
+    #self.layout.addWidget(self.reloadAndTestButton)
+    #self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
 
     
     # Configuration file picker
@@ -114,14 +114,6 @@ class VisAIReWidget:
     self.doneButton.toolTip = "Click this when done."
     self.layout.addWidget(self.doneButton)
     self.doneButton.connect('clicked(bool)', self.onDoneButtonClicked)
-
-    # Reset button
-    self.resetButton = qt.QPushButton("Reset")
-    self.resetButton.toolTip = "Click this when done."
-    self.layout.addWidget(self.resetButton)
-    self.resetButton.connect('clicked(bool)', self.onFormReset)
-    print('Reset button added')
-
 
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -171,11 +163,6 @@ class VisAIReWidget:
       return
 
     print 'Entry selected: ',name
-    appLogic = slicer.app.applicationLogic()
-    selectionNode = appLogic.GetSelectionNode()
-    selectionNode.SetReferenceActiveVolumeID(self.fixedVolumes[int(name)].GetID())
-    #selectionNode.SetReferenceSecondaryVolumeID(fg)
-    appLogic.PropagateVolumeSelection()
     for i in range(len(self.fixedVolumes)):
       #self.formEntries[i].blockSignals(True)
       if i == int(name):
@@ -189,7 +176,9 @@ class VisAIReWidget:
     self.compare0.SetForegroundVolumeID(self.movingVolume.GetID())
     self.compare1.SetForegroundVolumeID(self.registeredVolumes[int(name)].GetID())
     self.compare0.SetLinkedControl(True)
+    self.compare1.SetLinkedControl(True)
     self.compare0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
+    self.compare1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
   
   def onConfigFileSelected(self):
     if not self.configFile:
@@ -244,10 +233,6 @@ class VisAIReWidget:
       self.formEntries[fv].text = self.fixedVolumes[fv].GetName()
 
     self.entrySelected('0')
-
-  def onFormReset(self):
-    print('onFormReset()')
-    self.clearForm()
 
   def clearForm(self):
     for i in range(20):
