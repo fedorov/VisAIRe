@@ -94,6 +94,11 @@ class VisAIReWidget:
     self.layout.addWidget(label)
     self.layout.addWidget(self.opacitySlider)
 
+    #  Button to switch between showing background/foreground volumes
+    self.bgfgButton = qt.QPushButton("Switch Background/Foreground")
+    self.layout.addWidget(self.bgfgButton)
+    self.bgfgButton.connect('clicked()', self.onbgfgButtonPressed)
+
     # Slice control
     #label = qt.QLabel('Slice selector:')
     #self.sliceSlider = ctk.ctkSliderWidget()
@@ -116,7 +121,9 @@ class VisAIReWidget:
     self.questions = {'Improved compared to non-registered?':'binary','Diagnostic quality?':'binary','Error quantification (if available)':'numeric'}
     self.formEntryMapper = qt.QSignalMapper()
     self.formEntryMapper.connect('mapped(const QString&)', self.entrySelected)
-    for i in range(20):
+
+    self.maxFormEntries = 30
+    for i in range(self.maxFormEntries):
     # populate the assessment form    
       # create a new sub-frame with the questions      
       cb = ctk.ctkCollapsibleButton()
@@ -161,9 +168,9 @@ class VisAIReWidget:
     <property name=\"orientation\" action=\"default\">Axial</property>\
     <property name=\"viewlabel\" action=\"default\">"+str(i)+"</property>\
     <property name=\"viewcolor\" action=\"default\">#E17012</property>\
-    <property name=\"lightboxrows\" action=\"default\">1</property>\
+    <property name=\"lightboxrows\" action=\"default\">2</property>\
     <property name=\"lightboxcolumns\" action=\"default\">6</property>\
-    <property name=\"lightboxrows\" action=\"relayout\">1</property>\
+    <property name=\"lightboxrows\" action=\"relayout\">2</property>\
     <property name=\"lightboxcolumns\" action=\"relayout\">6</property>\
     </view>\
     </item>"
@@ -186,9 +193,16 @@ class VisAIReWidget:
         self.compare1 = scn
   
   def onOpacityChangeRequested(self,value):
-    print value
     self.compare0.SetForegroundOpacity(value)
     self.compare1.SetForegroundOpacity(value)
+
+  def onbgfgButtonPressed(self):
+    if self.compare0.GetForegroundOpacity() == 1:
+      self.compare0.SetForegroundOpacity(0)
+      self.compare1.SetForegroundOpacity(0)
+    else:
+      self.compare0.SetForegroundOpacity(1)
+      self.compare1.SetForegroundOpacity(1)
 
   def entrySelected(self, name):
     entry = self.formEntries[int(name)]
@@ -269,7 +283,7 @@ class VisAIReWidget:
     self.entrySelected('0')
 
   def clearForm(self):
-    for i in range(20):
+    for i in range(self.maxFormEntries):
       self.formEntries[i].visible = False
 
     '''
