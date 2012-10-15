@@ -179,7 +179,6 @@ class VisAIReWidget:
     layoutNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
     layoutNodes.SetReferenceCount(layoutNodes.GetReferenceCount()-1)
     self.layoutNode = layoutNodes.GetItemAsObject(0)
-    self.layoutNode = 
     self.layoutNode.AddLayoutDescription(123,compareViewTwoRows)
     self.layoutNode.SetViewArrangement(123)
     sliceCompositeNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceCompositeNode')
