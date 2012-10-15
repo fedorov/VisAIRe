@@ -168,19 +168,24 @@ class VisAIReWidget:
     <property name=\"orientation\" action=\"default\">Axial</property>\
     <property name=\"viewlabel\" action=\"default\">"+str(i)+"</property>\
     <property name=\"viewcolor\" action=\"default\">#E17012</property>\
-    <property name=\"lightboxrows\" action=\"default\">2</property>\
+    <property name=\"lightboxrows\" action=\"default\">1</property>\
     <property name=\"lightboxcolumns\" action=\"default\">6</property>\
-    <property name=\"lightboxrows\" action=\"relayout\">2</property>\
+    <property name=\"lightboxrows\" action=\"relayout\">1</property>\
     <property name=\"lightboxcolumns\" action=\"relayout\">6</property>\
     </view>\
     </item>"
       
     compareViewTwoRows = compareViewTwoRows+"</layout>"
-    self.layoutNode = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode').GetItemAsObject(0)
+    layoutNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
+    layoutNodes.SetReferenceCount(layoutNodes.GetReferenceCount()-1)
+    self.layoutNode = layoutNodes.GetItemAsObject(0)
+    self.layoutNode = 
     self.layoutNode.AddLayoutDescription(123,compareViewTwoRows)
     self.layoutNode.SetViewArrangement(123)
     sliceCompositeNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceCompositeNode')
+    sliceCompositeNodes.SetReferenceCount(sliceCompositeNodes.GetReferenceCount()-1)
     sliceNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceNode')
+    sliceNodes.SetReferenceCount(sliceNodes.GetReferenceCount()-1)
     self.compare0 = None
     self.compare1 = None
     for i in range(sliceCompositeNodes.GetNumberOfItems()):
