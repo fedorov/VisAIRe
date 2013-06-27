@@ -159,6 +159,7 @@ class VisAIReWidget:
     self.perVolumeForms = []
     self.fixedVolumes = []
     self.registeredVolumes = []
+    self.transforms = []
     self.caseName = None
 
     # add custom layout for comparing two pairs of volumes
@@ -175,13 +176,34 @@ class VisAIReWidget:
     <property name=\"lightboxcolumns\" action=\"relayout\">6</property>\
     </view>\
     </item>"
-
     compareViewTwoRows = compareViewTwoRows+"</layout>"
+
+    sideBySide = "<layout type=\"horizontal\">\
+     <item>\
+      <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">\
+       <property name=\"orientation\" action=\"default\">Axial</property>\
+       <property name=\"viewlabel\" action=\"default\">Moving</property>\
+       <property name=\"viewcolor\" action=\"default\">#F34A33</property>\
+      </view>\
+     </item>\
+     <item>\
+      <view class=\"vtkMRMLSliceNode\" singletontag=\"Yellow\">\
+       <property name=\"orientation\" action=\"default\">Axial</property>\
+       <property name=\"viewlabel\" action=\"default\">Reference</property>\
+       <property name=\"viewcolor\" action=\"default\">#EDD54C</property>\
+      </view>\
+     </item>\
+    </layout>"
+    print(sideBySide)
+
     layoutNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
     layoutNodes.SetReferenceCount(layoutNodes.GetReferenceCount()-1)
     self.layoutNode = layoutNodes.GetItemAsObject(0)
-    self.layoutNode.AddLayoutDescription(123,compareViewTwoRows)
-    self.layoutNode.SetViewArrangement(123)
+    self.CompareLayout = 123
+    self.ContouringLayout = 124
+    self.layoutNode.AddLayoutDescription(self.CompareLayout,compareViewTwoRows)
+    self.layoutNode.AddLayoutDescription(self.ContouringLayout,sideBySide)
+    self.layoutNode.SetViewArrangement(self.ContouringLayout)
     sliceCompositeNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceCompositeNode')
     sliceCompositeNodes.SetReferenceCount(sliceCompositeNodes.GetReferenceCount()-1)
     sliceNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceNode')
@@ -210,6 +232,11 @@ class VisAIReWidget:
       self.compare1.SetForegroundOpacity(1)
 
   def entrySelected(self, name):
+    if self.viewMode == 'compare':
+      self.layoutNode.SetViewArrangement(self.CompareLayout)
+    else:
+      self.layoutNode.SetViewArrangement(self.ContouringLayout)
+
     entry = self.formEntries[int(name)]
     if entry.collapsed == True:
       return
@@ -225,12 +252,29 @@ class VisAIReWidget:
       #self.formEntries[i].blockSignals(False)
     self.compare0.SetLinkedControl(False)
     self.compare1.SetLinkedControl(False)
+
     self.compare0.SetForegroundVolumeID(self.movingVolume.GetID())
+    if self.movingVolumeSeg:
+      self.compare0.SetLabelVolumeID(self.movingVolumeSeg.GetID())
+
     self.compare1.SetForegroundVolumeID(self.registeredVolumes[int(name)].GetID())
+    if self.fixedVolumesSegmentations[int(name)]:
+      self.compare1.SetLabelVolumeID(self.fixedVolumesSegmentations[int(name)].GetID())
+
     self.compare0.SetLinkedControl(True)
     self.compare1.SetLinkedControl(True)
     self.compare0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
     self.compare1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
+
+  def loadLabel(self,fname):
+    volume = slicer.vtkMRMLScalarVolumeNode()
+    reader = slicer.vtkMRMLNRRDStorageNode()
+    reader.SetFileName(fname)
+    reader.ReadData(volume)
+    volume.SetAttribute('LabelMap','1')
+    #slicer.
+    return volume
+
 
   def onConfigFileSelected(self):
     if not self.configFile:
@@ -253,6 +297,7 @@ class VisAIReWidget:
     slicer.mrmlScene.Clear(0)
     self.clearForm()
     self.fixedVolumes = []
+    self.fixedVolumeIds = []
     self.registeredVolumes = []
     self.movingVolume = None
 
@@ -269,19 +314,42 @@ class VisAIReWidget:
     # there should only be one moving image
     self.movingVolume = slicer.util.loadVolume(cf.get('MovingData','Image'),returnNode=True)[1]
 
+    # (optional) segmentation of the moving image
+    #try:
+    self.movingVolumeSeg = slicer.util.loadLabelVolume(cf.get('MovingData','Segmentation'),{},returnNode=True)[1]
+    #self.movingVolumeSeg.SetAttribute('LabelMap','1')
+    #self.movingVolumeSeg.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileGenericAnatomyColors.txt')
+    #print('Setup color node: '+self.movingVolumeSeg.GetDisplayNode().GetColorNodeID())
+    #except:
+    #  self.movingVolumeSeg = None
+
     # and an arbitrary number of fixed images
     fixedImageFiles = cf.options('FixedData')
     print(str(fixedImageFiles))
     for fi in fixedImageFiles:
-      if string.find(fi,'Image') == 0:
+      if re.match('Image\d+',fi):
         self.fixedVolumes.append(slicer.util.loadVolume(cf.get('FixedData',fi),returnNode=True)[1])
+        self.fixedVolumeIds.append(fi.split('Image')[1])
+    print('Fixed volumes: '+str(self.fixedVolumes))
+
+    # (optional) segmentations of the structure in the fixed images
+    self.fixedVolumesSegmentations = [None] * len(self.fixedVolumes)
+    for fvId in range(len(self.fixedVolumes)):
+      try:
+        self.fixedVolumesSegmentations[fvId] = slicer.util.loadLabelVolume(cf.get('Segmentation'+self.fixedVolumeIds[fvId]),{},returnNode=True)[1]
+        #self.fixedVolumesSegmentations[fvId].SetAttribute('LabelMap','1')
+        #self.fixedVolumesSegmentations[fvId].GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileGenericAnatomyColors.txt')
+      except:
+        pass
 
     # each fixed image should have a matching registered image
     registeredImageFiles = cf.options('RegisteredData')
     print(str(registeredImageFiles))
     for fi in registeredImageFiles:
-      if string.find(fi,'Image') == 0:
+      if re.match('Image\d+',fi):
         self.registeredVolumes.append(slicer.util.loadVolume(cf.get('RegisteredData',fi),returnNode=True)[1])
+      if re.match('Transform\d+',fi) == 0:
+        self.transforms.append(slicer.util.loadTransform(cf.get('RegisteredData',fi),returnNode=True)[1])
 
     assert len(self.fixedVolumes) == len(self.registeredVolumes)
 
