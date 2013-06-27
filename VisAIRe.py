@@ -1,6 +1,7 @@
 import os, re, string
 import unittest
 from __main__ import vtk, qt, ctk, slicer
+import ConfigParser as config
 
 #
 # VisAIRe
@@ -75,7 +76,7 @@ class VisAIReWidget:
     self.raterName = qt.QLineEdit()
     self.layout.addWidget(label)
     self.layout.addWidget(self.raterName)
-    
+
     # Configuration file picker
     label = qt.QLabel('Configuration file:')
     self.configFilePicker = qt.QPushButton('N/A')
@@ -124,8 +125,8 @@ class VisAIReWidget:
 
     self.maxFormEntries = 30
     for i in range(self.maxFormEntries):
-    # populate the assessment form    
-      # create a new sub-frame with the questions      
+    # populate the assessment form
+      # create a new sub-frame with the questions
       cb = ctk.ctkCollapsibleButton()
       cb.visible = False
       cb.collapsed = True
@@ -142,7 +143,7 @@ class VisAIReWidget:
         elif c == 'numeric':
           self.addNumericEntry(q, layout)
 
-  
+
     # Save button
     self.doneButton = qt.QPushButton("Save")
     self.doneButton.toolTip = "Click this when done."
@@ -174,7 +175,7 @@ class VisAIReWidget:
     <property name=\"lightboxcolumns\" action=\"relayout\">6</property>\
     </view>\
     </item>"
-      
+
     compareViewTwoRows = compareViewTwoRows+"</layout>"
     layoutNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
     layoutNodes.SetReferenceCount(layoutNodes.GetReferenceCount()-1)
@@ -195,7 +196,7 @@ class VisAIReWidget:
         self.compare0 = scn
       if sn.GetName() == 'Compare1':
         self.compare1 = scn
-  
+
   def onOpacityChangeRequested(self,value):
     self.compare0.SetForegroundOpacity(value)
     self.compare1.SetForegroundOpacity(value)
@@ -230,17 +231,17 @@ class VisAIReWidget:
     self.compare1.SetLinkedControl(True)
     self.compare0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
     self.compare1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
-  
+
   def onConfigFileSelected(self):
     if not self.configFile:
-      fileName = qt.QFileDialog.getOpenFileName(self.parent, "Choose assessment for configuration file","/","Conf Files (*.conf)")
+      fileName = qt.QFileDialog.getOpenFileName(self.parent, "Choose assessment for configuration file","/","Conf Files (*.ini)")
     else:
       lastDir = self.configFile[0:string.rfind(self.configFile,'/')]
-      fileName = qt.QFileDialog.getOpenFileName(self.parent, "Choose assessment for configuration file",lastDir,"Conf Files (*.conf)")
+      fileName = qt.QFileDialog.getOpenFileName(self.parent, "Choose assessment for configuration file",lastDir,"Conf Files (*.ini)")
 
     if fileName == '':
       return
-    
+
     self.configFile = fileName
     try:
       label = string.split(fileName,'/')[-1]
@@ -254,32 +255,40 @@ class VisAIReWidget:
     self.fixedVolumes = []
     self.registeredVolumes = []
     self.movingVolume = None
-    configFile = open(fileName,'r')
-    mode = None
-    for line in configFile:
-      # drop newline
-      line = line[:-1]
-      m = re.match('\[(.*)\]',line)
-      if m:
-        mode = m.groups()[0]
-        print('Parsing mode: '+mode)
-        continue
-      if mode:
-        if mode == 'MovingImage':
-          print('Will load movingVolume <'+line+'>')
-          self.movingVolume = slicer.util.loadVolume(line,returnNode=True)[1]
-        elif mode == 'FixedImages':
-          self.fixedVolumes.append(slicer.util.loadVolume(line,returnNode=True)[1])
-        elif mode == 'RegisteredImages':
-          self.registeredVolumes.append(slicer.util.loadVolume(line,returnNode=True)[1])
-        #elif mode == 'AssessmentQuestions':
-        #  item = string.split(line,';')
-        #  self.questions[item[0]] = item[1]
-        elif mode == 'CaseName':
-          self.caseName = line
-          self.evaluationFrame.text = "Assessment Form for "+line
-    
-    # populate the assessment form    
+
+    cf = config.SafeConfigParser()
+    cf.optionxform = str
+    cf.read(fileName)
+
+    options = cf.sections()
+    assert cf.has_section('Info')
+    assert cf.has_section('MovingData')
+    assert cf.has_section('FixedData')
+    assert cf.has_section('RegisteredData')
+
+    # there should only be one moving image
+    self.movingVolume = slicer.util.loadVolume(cf.get('MovingData','Image'),returnNode=True)[1]
+
+    # and an arbitrary number of fixed images
+    fixedImageFiles = cf.options('FixedData')
+    print(str(fixedImageFiles))
+    for fi in fixedImageFiles:
+      if string.find(fi,'Image') == 0:
+        self.fixedVolumes.append(slicer.util.loadVolume(cf.get('FixedData',fi),returnNode=True)[1])
+
+    # each fixed image should have a matching registered image
+    registeredImageFiles = cf.options('RegisteredData')
+    print(str(registeredImageFiles))
+    for fi in registeredImageFiles:
+      if string.find(fi,'Image') == 0:
+        self.registeredVolumes.append(slicer.util.loadVolume(cf.get('RegisteredData',fi),returnNode=True)[1])
+
+    assert len(self.fixedVolumes) == len(self.registeredVolumes)
+
+    self.caseName = cf.get('Info','CaseName')
+    self.evaluationFrame.text = "Assessment Form for "+self.caseName
+
+    # populate the assessment form
     for fv in range(len(self.fixedVolumes)):
       self.formEntries[fv].visible = True
       self.formEntries[fv].text = self.fixedVolumes[fv].GetName()
@@ -320,7 +329,7 @@ class VisAIReWidget:
     #else:
       #self.timer.stop()
     '''
-      
+
   def onDoneButtonClicked(self):
     path = self.configFile[0:string.rfind(self.configFile,'/')]
     reportName = path+'/'+self.caseName+'-'+self.raterName.text+'-report.log'
@@ -408,8 +417,8 @@ class VisAIReWidget:
 #
 
 class VisAIReLogic:
-  """This class should implement all the actual 
-  computation done by your module.  The interface 
+  """This class should implement all the actual
+  computation done by your module.  The interface
   should be such that other python code can import
   this class and make use of the functionality without
   requiring an instance of the Widget
@@ -418,7 +427,7 @@ class VisAIReLogic:
     pass
 
   def hasImageData(self,volumeNode):
-    """This is a dummy logic method that 
+    """This is a dummy logic method that
     returns true if the passed in volume
     node has valid image data
     """
