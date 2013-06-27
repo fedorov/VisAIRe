@@ -100,6 +100,22 @@ class VisAIReWidget:
     self.layout.addWidget(self.bgfgButton)
     self.bgfgButton.connect('clicked()', self.onbgfgButtonPressed)
 
+    # Select between compare view and editing layouts
+    groupLabel = qt.QLabel('Review mode:')
+    self.viewGroup = qt.QButtonGroup()
+    self.compareSelector = qt.QRadioButton('Compare view')
+    self.sideBySideSelector = qt.QRadioButton('Side by side')
+    self.compareSelector.setChecked(1)
+    self.viewGroup.addButton(self.compareSelector,1)
+    self.viewGroup.addButton(self.sideBySideSelector,2)
+    self.groupWidget = qt.QWidget()
+    self.groupLayout = qt.QFormLayout(self.groupWidget)
+    self.groupLayout.addRow(self.compareSelector, self.sideBySideSelector)
+    self.layout.addWidget(self.groupWidget)
+    # step4Layout.addRow(groupLabel, self.viewGroup)
+
+    self.viewGroup.connect('buttonClicked(int)', self.onViewUpdateRequested)
+
     # Slice control
     #label = qt.QLabel('Slice selector:')
     #self.sliceSlider = ctk.ctkSliderWidget()
@@ -162,6 +178,8 @@ class VisAIReWidget:
     self.transforms = []
     self.caseName = None
 
+    self.viewMode = 'compare'
+
     # add custom layout for comparing two pairs of volumes
     compareViewTwoRows ="<layout type=\"vertical\">"
     for i in range(2):
@@ -180,14 +198,14 @@ class VisAIReWidget:
 
     sideBySide = "<layout type=\"horizontal\">\
      <item>\
-      <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">\
+      <view class=\"vtkMRMLSliceNode\" singletontag=\"SideBySide0\">\
        <property name=\"orientation\" action=\"default\">Axial</property>\
        <property name=\"viewlabel\" action=\"default\">Moving</property>\
        <property name=\"viewcolor\" action=\"default\">#F34A33</property>\
       </view>\
      </item>\
      <item>\
-      <view class=\"vtkMRMLSliceNode\" singletontag=\"Yellow\">\
+      <view class=\"vtkMRMLSliceNode\" singletontag=\"SideBySide1\">\
        <property name=\"orientation\" action=\"default\">Axial</property>\
        <property name=\"viewlabel\" action=\"default\">Reference</property>\
        <property name=\"viewcolor\" action=\"default\">#EDD54C</property>\
@@ -204,6 +222,7 @@ class VisAIReWidget:
     self.layoutNode.AddLayoutDescription(self.CompareLayout,compareViewTwoRows)
     self.layoutNode.AddLayoutDescription(self.ContouringLayout,sideBySide)
     self.layoutNode.SetViewArrangement(self.ContouringLayout)
+    self.layoutNode.SetViewArrangement(self.CompareLayout)
     sliceCompositeNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceCompositeNode')
     sliceCompositeNodes.SetReferenceCount(sliceCompositeNodes.GetReferenceCount()-1)
     sliceNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceNode')
@@ -218,24 +237,53 @@ class VisAIReWidget:
         self.compare0 = scn
       if sn.GetName() == 'Compare1':
         self.compare1 = scn
+      if sn.GetName() == 'SideBySide0':
+        self.sidebyside0 = scn
+      if sn.GetName() == 'SideBySide1':
+        self.sidebyside1 = scn
+
+  def onViewUpdateRequested(self,id):
+    if id == 1:
+      self.viewMode = 'compare'
+    if id == 2:
+      self.viewMode = 'sidebyside'
+    self.entrySelected('0')
 
   def onOpacityChangeRequested(self,value):
-    self.compare0.SetForegroundOpacity(value)
-    self.compare1.SetForegroundOpacity(value)
+    if self.viewMode == 'compare':
+      viewer0 = self.compare0
+      viewer1 = self.compare1
+    else:
+      viewer0 = self.sidebyside0
+      viewer1 = self.sidebyside1
+
+    viewer0.SetForegroundOpacity(value)
+    viewer1.SetForegroundOpacity(value)
 
   def onbgfgButtonPressed(self):
-    if self.compare0.GetForegroundOpacity() == 1:
-      self.compare0.SetForegroundOpacity(0)
-      self.compare1.SetForegroundOpacity(0)
+    if self.viewMode == 'compare':
+      viewer0 = self.compare0
+      viewer1 = self.compare1
     else:
-      self.compare0.SetForegroundOpacity(1)
-      self.compare1.SetForegroundOpacity(1)
+      viewer0 = self.sidebyside0
+      viewer1 = self.sidebyside1
+
+    if viewer0.GetForegroundOpacity() == 1:
+      viewer0.SetForegroundOpacity(0)
+      viewer1.SetForegroundOpacity(0)
+    else:
+      viewer0.SetForegroundOpacity(1)
+      viewer1.SetForegroundOpacity(1)
 
   def entrySelected(self, name):
     if self.viewMode == 'compare':
       self.layoutNode.SetViewArrangement(self.CompareLayout)
+      viewer0 = self.compare0
+      viewer1 = self.compare1
     else:
       self.layoutNode.SetViewArrangement(self.ContouringLayout)
+      viewer0 = self.sidebyside0
+      viewer1 = self.sidebyside1
 
     entry = self.formEntries[int(name)]
     if entry.collapsed == True:
@@ -250,21 +298,21 @@ class VisAIReWidget:
       else:
         self.formEntries[i].collapsed = True
       #self.formEntries[i].blockSignals(False)
-    self.compare0.SetLinkedControl(False)
-    self.compare1.SetLinkedControl(False)
+    viewer0.SetLinkedControl(False)
+    viewer1.SetLinkedControl(False)
 
-    self.compare0.SetForegroundVolumeID(self.movingVolume.GetID())
+    viewer0.SetForegroundVolumeID(self.movingVolume.GetID())
     if self.movingVolumeSeg:
-      self.compare0.SetLabelVolumeID(self.movingVolumeSeg.GetID())
+      viewer0.SetLabelVolumeID(self.movingVolumeSeg.GetID())
 
-    self.compare1.SetForegroundVolumeID(self.registeredVolumes[int(name)].GetID())
+    viewer1.SetForegroundVolumeID(self.registeredVolumes[int(name)].GetID())
     if self.fixedVolumesSegmentations[int(name)]:
-      self.compare1.SetLabelVolumeID(self.fixedVolumesSegmentations[int(name)].GetID())
+      viewer1.SetLabelVolumeID(self.fixedVolumesSegmentations[int(name)].GetID())
 
-    self.compare0.SetLinkedControl(True)
-    self.compare1.SetLinkedControl(True)
-    self.compare0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
-    self.compare1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
+    viewer0.SetLinkedControl(True)
+    viewer1.SetLinkedControl(True)
+    viewer0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
+    viewer1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
 
   def loadLabel(self,fname):
     volume = slicer.vtkMRMLScalarVolumeNode()
