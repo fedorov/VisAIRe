@@ -276,6 +276,25 @@ class VisAIReWidget:
       viewer1.SetForegroundOpacity(1)
 
   def entrySelected(self, name):
+
+    # prepare fixed volume label, if it is not available
+    if not self.fixedVolumesSegmentations[int(name)] and self.transforms[int(name)]:
+      tfm = self.transforms[int(name)]
+      print('Resampled segmentation is missing, but will resample with '+tfm.GetID())
+
+      resample = slicer.modules.brainsresample
+      volumesLogic = slicer.modules.volumes.logic()
+      labelName = self.fixedVolumes[int(name)].GetName()+'-label'
+      self.fixedVolumesSegmentations[int(name)] = volumesLogic.CreateAndAddLabelVolume(slicer.mrmlScene, self.fixedVolumes[int(name)], labelName)
+      parameters = {}
+      parameters['inputVolume'] = self.movingVolumeSeg.GetID()
+      parameters['referenceVolume'] = self.fixedVolumes[int(name)].GetID()
+      parameters['warpTransform'] = self.transforms[int(name)].GetID()
+      parameters['outputVolume'] = self.fixedVolumesSegmentations[int(name)]
+      parameters['pixelType'] = 'short'
+      parameters['interpolationMode'] = 'NearestNeighbor'
+      slicer.cli.run(resample, None, parameters, wait_for_completion = True)
+
     if self.viewMode == 'compare':
       self.layoutNode.SetViewArrangement(self.CompareLayout)
       viewer0 = self.compare0
@@ -306,23 +325,18 @@ class VisAIReWidget:
       viewer0.SetLabelVolumeID(self.movingVolumeSeg.GetID())
 
     viewer1.SetForegroundVolumeID(self.registeredVolumes[int(name)].GetID())
+    # if segmentation is available for the registered node, display it
     if self.fixedVolumesSegmentations[int(name)]:
       viewer1.SetLabelVolumeID(self.fixedVolumesSegmentations[int(name)].GetID())
+    # otherwise, if the transform is available, resample the moving volume
+    # segmentation, populate the entry in the list of segmentations and
+    # initialize the view
+
 
     viewer0.SetLinkedControl(True)
     viewer1.SetLinkedControl(True)
     viewer0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
     viewer1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
-
-  def loadLabel(self,fname):
-    volume = slicer.vtkMRMLScalarVolumeNode()
-    reader = slicer.vtkMRMLNRRDStorageNode()
-    reader.SetFileName(fname)
-    reader.ReadData(volume)
-    volume.SetAttribute('LabelMap','1')
-    #slicer.
-    return volume
-
 
   def onConfigFileSelected(self):
     if not self.configFile:
@@ -381,23 +395,32 @@ class VisAIReWidget:
     print('Fixed volumes: '+str(self.fixedVolumes))
 
     # (optional) segmentations of the structure in the fixed images
+    self.registeredVolumes = [None] * len(self.fixedVolumes)
     self.fixedVolumesSegmentations = [None] * len(self.fixedVolumes)
+    self.transforms = [None] * len(self.fixedVolumes)
     for fvId in range(len(self.fixedVolumes)):
+      imageId = 'Image'+self.fixedVolumeIds[fvId]
+      segId = 'Segmentation'+self.fixedVolumeIds[fvId]
+      tfmId = 'Transform'+self.fixedVolumeIds[fvId]
       try:
-        self.fixedVolumesSegmentations[fvId] = slicer.util.loadLabelVolume(cf.get('Segmentation'+self.fixedVolumeIds[fvId]),{},returnNode=True)[1]
-        #self.fixedVolumesSegmentations[fvId].SetAttribute('LabelMap','1')
-        #self.fixedVolumesSegmentations[fvId].GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileGenericAnatomyColors.txt')
+        self.registeredVolumes[fvId] = slicer.util.loadVolume(cf.get('RegisteredData',imageId),{},returnNode=True)[1]
       except:
+        print('Failed to read RegisteredData/'+imageId)
         pass
+      try:
+        self.fixedVolumesSegmentations[fvId] = slicer.util.loadLabelVolume(cf.get('FixedData',segId),{},returnNode=True)[1]
+      except:
+        print('Failed to read FixedData/'+segId)
+        pass
+      #try:
+      self.transforms[fvId] = slicer.util.loadTransform(cf.get('RegisteredData',tfmId),returnNode=True)[1]
+      #except:
+      #  print('Failed to read RegisteredData/'+tfmId)
+      #  pass
 
-    # each fixed image should have a matching registered image
-    registeredImageFiles = cf.options('RegisteredData')
-    print(str(registeredImageFiles))
-    for fi in registeredImageFiles:
-      if re.match('Image\d+',fi):
-        self.registeredVolumes.append(slicer.util.loadVolume(cf.get('RegisteredData',fi),returnNode=True)[1])
-      if re.match('Transform\d+',fi) == 0:
-        self.transforms.append(slicer.util.loadTransform(cf.get('RegisteredData',fi),returnNode=True)[1])
+    print('Number of fixed images: '+str(self.registeredVolumes))
+    print('Number of transformations: '+str(self.transforms))
+    print('Number of fixed image segmentations: '+str(self.fixedVolumesSegmentations))
 
     assert len(self.fixedVolumes) == len(self.registeredVolumes)
 
