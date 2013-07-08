@@ -487,7 +487,7 @@ class VisAIReWidget:
       self.formEntries[fv].visible = True
       self.formEntries[fv].text = self.fixedVolumes[fv].GetName()
 
-    self.entrySelected('0')
+    # self.entrySelected('0')
 
   def clearForm(self):
     for i in range(self.maxFormEntries):
