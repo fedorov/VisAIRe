@@ -232,7 +232,7 @@ class VisAIReWidget:
     for i in range(sliceCompositeNodes.GetNumberOfItems()):
       scn = sliceCompositeNodes.GetItemAsObject(i)
       sn = sliceNodes.GetItemAsObject(i)
-      print 'Composite node: ',sn.GetName()
+      sn.SetUseLabelOutline(1)
       if sn.GetName() == 'Compare0':
         self.compare0 = scn
       if sn.GetName() == 'Compare1':
@@ -294,6 +294,17 @@ class VisAIReWidget:
       parameters['pixelType'] = 'short'
       parameters['interpolationMode'] = 'NearestNeighbor'
       slicer.cli.run(resample, None, parameters, wait_for_completion = True)
+
+      # initialize the file name for the segmentation
+      storageNode = self.fixedVolumesSegmentations[int(name)].GetStorageNode()
+      fixedVolumeIdStr = str(self.fixedVolumeIds[int(name)])
+      segFileName = os.path.join(os.path.split(self.config.get('MovingData','Segmentation'))[0],fixedVolumeIdStr+'-label.nrrd')
+      storageNode.SetFileName(segFileName)
+      storageNode.SetWriteFileFormat('.nrrd')
+
+      # update the config file to keep reference to the newly created
+      # segmentation label
+      self.config.set('FixedData','Segmentation'+fixedVolumeIdStr,segFileName)
 
     if self.viewMode == 'compare':
       self.layoutNode.SetViewArrangement(self.CompareLayout)
@@ -362,12 +373,14 @@ class VisAIReWidget:
     self.fixedVolumeIds = []
     self.registeredVolumes = []
     self.movingVolume = None
+    self.movingVolumeSeg = None
 
-    cf = config.SafeConfigParser()
+    self.config = config.SafeConfigParser()
+    cf = self.config
     cf.optionxform = str
     cf.read(fileName)
+    self.configFileName = fileName
 
-    options = cf.sections()
     assert cf.has_section('Info')
     assert cf.has_section('MovingData')
     assert cf.has_section('FixedData')
@@ -384,6 +397,19 @@ class VisAIReWidget:
     #print('Setup color node: '+self.movingVolumeSeg.GetDisplayNode().GetColorNodeID())
     #except:
     #  self.movingVolumeSeg = None
+
+    # fixedVolumes: Slicer volume nodes corresponding to fixed images from the
+    #   config file
+    # fixedVolumeIds: Each volume appears as "Image<id>" in the config file;
+    #   this list stores the ids assigned to the volumes
+    # registeredVolumes: results of registration
+    # transforms: transformations mapping moving volume to the corresponding
+    #   fixed volume
+    # fixedVolumesSegmentations: masks of a structure contoured in each of the
+    #   fixed volumes
+    # movingFiducials: fiducial points corresponding to image landmarks
+    # fixedFiducials: fiducial points corresponding to the same landmarks in
+    #   the fixed images
 
     # and an arbitrary number of fixed images
     fixedImageFiles = cf.options('FixedData')
@@ -438,38 +464,12 @@ class VisAIReWidget:
     for i in range(self.maxFormEntries):
       self.formEntries[i].visible = False
 
-    '''
-    l = self.evaluationFrameLayout
-    print('clearForm()')
-    children = l.children()
-    print children
-    for i in range(1,len(children)):
-      children[i].deleteLater()
-
-    while l.count():
-      i = l.takeAt(0)
-      w = None
-      if i:
-        w = i.widget()
-      if w:
-        w.visible = False
-        w.deleteLater()
-    child = None
-    try:
-      child = self.evaluationFrame.children()[1]
-    except:
-      pass
-    while child:
-      print 'Will try to delete ',child
-      child.deleteLater()
-      qt.QApplication.processEvents()
-      child = self.evaluationFrame.children()[1]
-      #self.timer.start()
-    #else:
-      #self.timer.stop()
-    '''
-
   def onDoneButtonClicked(self):
+    # save the config file
+    self.config.write(open(self.configFileName,'w'))
+
+    return
+
     path = self.configFile[0:string.rfind(self.configFile,'/')]
     reportName = path+'/'+self.caseName+'-'+self.raterName.text+'-report.log'
     report = open(reportName,'w')
