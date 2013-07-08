@@ -3,6 +3,12 @@ import unittest
 from __main__ import vtk, qt, ctk, slicer
 import ConfigParser as config
 
+from Editor import EditorWidget
+from EditorLib import EditColor
+import Editor
+from EditorLib import EditUtil
+from EditorLib import EditorLib
+
 #
 # VisAIRe
 #
@@ -50,6 +56,15 @@ class VisAIReWidget:
     if not parent:
       self.setup()
       self.parent.show()
+
+    # TODO: figure out why module/class hierarchy is different
+    # between developer builds ans packages
+    try:
+      # for developer build...
+      self.editUtil = EditorLib.EditUtil.EditUtil()
+    except AttributeError:
+      # for release package...
+      self.editUtil = EditorLib.EditUtil()
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -115,6 +130,15 @@ class VisAIReWidget:
     # step4Layout.addRow(groupLabel, self.viewGroup)
 
     self.viewGroup.connect('buttonClicked(int)', self.onViewUpdateRequested)
+
+    # setup Editor widget
+    editorWidgetParent = slicer.qMRMLWidget()
+    editorWidgetParent.setLayout(qt.QVBoxLayout())
+    editorWidgetParent.setMRMLScene(slicer.mrmlScene)
+    self.editorWidget = EditorWidget(parent=editorWidgetParent,showVolumesFrame=False)
+    self.editorWidget.setup()
+    self.editorParameterNode = self.editUtil.getParameterNode()
+    self.layout.addWidget(editorWidgetParent)
 
     # Slice control
     #label = qt.QLabel('Slice selector:')
@@ -305,6 +329,11 @@ class VisAIReWidget:
       # update the config file to keep reference to the newly created
       # segmentation label
       self.config.set('FixedData','Segmentation'+fixedVolumeIdStr,segFileName)
+
+      # setup the Editor
+      self.editorWidget.setMasterNode(self.fixedVolumes[int(name)])
+      self.editorWidget.setMergeNode(self.fixedVolumesSegmentations[int(name)])
+      self.editorParameterNode.Modified()
 
     if self.viewMode == 'compare':
       self.layoutNode.SetViewArrangement(self.CompareLayout)
