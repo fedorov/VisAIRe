@@ -67,16 +67,22 @@ class VisAIReWidget:
       self.editUtil = EditorLib.EditUtil()
 
   def setup(self):
+    self.viewMode = 'compare'
+    self.compare0 = None
+    self.compare1 = None
+    self.sidebyside0 = None
+    self.sidebyside1 = None
+
     # Instantiate and connect widgets ...
 
     # reload button
     # (use this during development, but remove it when delivering
     #  your module to users)
-    #self.reloadButton = qt.QPushButton("Reload")
-    #self.reloadButton.toolTip = "Reload this module."
-    #self.reloadButton.name = "VisAIRe Reload"
-    #self.layout.addWidget(self.reloadButton)
-    #self.reloadButton.connect('clicked()', self.onReload)
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.reloadButton.name = "VisAIRe Reload"
+    self.layout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked()', self.onReload)
 
     # reload and test button
     # (use this during development, but remove it when delivering
@@ -98,6 +104,10 @@ class VisAIReWidget:
     self.configFilePicker.connect('clicked()',self.onConfigFileSelected)
     self.layout.addWidget(label)
     self.layout.addWidget(self.configFilePicker)
+
+    self.makeSnapshots = qt.QPushButton('Make snapshots')
+    self.layout.addWidget(self.makeSnapshots)
+    self.makeSnapshots.connect('clicked()', self.onMakeSnapshots)
 
     # Opacity control
     label = qt.QLabel('Foreground/Background opacity:')
@@ -202,7 +212,6 @@ class VisAIReWidget:
     self.transforms = []
     self.caseName = None
 
-    self.viewMode = 'compare'
 
     # add custom layout for comparing two pairs of volumes
     compareViewTwoRows ="<layout type=\"vertical\">"
@@ -251,8 +260,6 @@ class VisAIReWidget:
     sliceCompositeNodes.SetReferenceCount(sliceCompositeNodes.GetReferenceCount()-1)
     sliceNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceNode')
     sliceNodes.SetReferenceCount(sliceNodes.GetReferenceCount()-1)
-    self.compare0 = None
-    self.compare1 = None
     for i in range(sliceCompositeNodes.GetNumberOfItems()):
       scn = sliceCompositeNodes.GetItemAsObject(i)
       sn = sliceNodes.GetItemAsObject(i)
@@ -265,6 +272,19 @@ class VisAIReWidget:
         self.sidebyside0 = scn
       if sn.GetName() == 'SideBySide1':
         self.sidebyside1 = scn
+
+  def compositeNodeForWidget(self,name):
+    sliceCompositeNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceCompositeNode')
+    sliceCompositeNodes.SetReferenceCount(sliceCompositeNodes.GetReferenceCount()-1)
+    sliceNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSliceNode')
+    sliceNodes.SetReferenceCount(sliceNodes.GetReferenceCount()-1)
+    for i in range(sliceCompositeNodes.GetNumberOfItems()):
+      scn = sliceCompositeNodes.GetItemAsObject(i)
+      sn = sliceNodes.GetItemAsObject(i)
+      sn.SetUseLabelOutline(1)
+      if sn.GetName() == name:
+        return scn
+    return None
 
   def onViewUpdateRequested(self,id):
     if id == 1:
@@ -281,8 +301,10 @@ class VisAIReWidget:
       viewer0 = self.sidebyside0
       viewer1 = self.sidebyside1
 
-    viewer0.SetForegroundOpacity(value)
-    viewer1.SetForegroundOpacity(value)
+    if viewer0:
+      viewer0.SetForegroundOpacity(value)
+    if viewer1:
+      viewer1.SetForegroundOpacity(value)
 
   def onbgfgButtonPressed(self):
     if self.viewMode == 'compare':
@@ -299,10 +321,63 @@ class VisAIReWidget:
       viewer0.SetForegroundOpacity(1)
       viewer1.SetForegroundOpacity(1)
 
+  def onMakeSnapshots(self):
+    for key in range(len(self.transforms)):
+      print('Key :'+str(key))
+      if not self.transforms[key]:
+        continue
+      self.makeSnapshotsForKey(key)
+
+  def makeSnapshotsForKey(self,name,snapshots=True):
+      movingID = self.movingVolume.GetID()
+      registeredID = self.registeredVolumes[int(name)].GetID()
+      fixedID = self.fixedVolumes[int(name)].GetID()
+
+      snapshotsDir = '/Users/fedorov/Temp/RegistrationSnapshots'
+      # assume this is full path, and the file name has the format
+      #  <CaseID>_<junk>
+      caseId = os.path.split(self.configFileName)[-1].split('_')[0]
+
+      redSliceCompositeNode = self.compositeNodeForWidget('Red')
+
+      redSliceCompositeNode.SetForegroundOpacity(0)
+
+      self.setupLightbox(fixedID,movingID)
+      if snapshots:
+        snapshotName = os.path.join(snapshotsDir,caseId+'_'+str(name)+'_fixed.png')
+        self.makeSnapshot('Red',snapshotName)
+
+      self.setupLightbox(registeredID,movingID)
+      if snapshots:
+        snapshotName = os.path.join(snapshotsDir,caseId+'_'+str(name)+'_registered.png')
+        self.makeSnapshot('Red',snapshotName)
+
+      # make snapshots of the moving image for the first one
+      # (same for all keys)
+      if str(name) == '0':
+        redSliceCompositeNode.SetForegroundOpacity(1)
+        if snapshots:
+          snapshotName = os.path.join(snapshotsDir,caseId+'_moving.png')
+          self.makeSnapshot('Red',snapshotName)
+
+  def makeSnapshot(self, widgetName, snapshotName):
+      w = slicer.app.layoutManager().sliceWidget(widgetName)
+      if w:
+        qt.QPixmap().grabWidget(w).toImage().save(snapshotName)
+
+  def setupSliceWidget(self,swName):
+      w = slicer.app.layoutManager().sliceWidget(swName)
+      w.fitSliceToBackground()
+      sn = self.compositeNodeForWidget(swName)
+      sn.SetForegroundOpacity(0)
+      n = w.sliceLogic().GetSliceNode()
+      fov = n.GetFieldOfView()
+      n.SetFieldOfView(fov[0]/2.,fov[1]/2.,fov[2]/2.)
+
   def entrySelected(self, name):
 
     # prepare fixed volume label, if it is not available
-    if not self.fixedVolumesSegmentations[int(name)] and self.transforms[int(name)]:
+    if self.movingVolumeSeg and not self.fixedVolumesSegmentations[int(name)] and self.transforms[int(name)]:
       tfm = self.transforms[int(name)]
       print('Resampled segmentation is missing, but will resample with '+tfm.GetID())
 
@@ -360,11 +435,16 @@ class VisAIReWidget:
     viewer0.SetLinkedControl(False)
     viewer1.SetLinkedControl(False)
 
-    viewer0.SetForegroundVolumeID(self.movingVolume.GetID())
+    v0fgID = self.movingVolume.GetID()
+    v1fgID = self.registeredVolumes[int(name)].GetID()
+    bgID = self.fixedVolumes[int(name)].GetID()
+    print('Will be setting ids: '+v0fgID+','+v1fgID+','+bgID)
+
+    viewer0.SetForegroundVolumeID(v0fgID)
     if self.movingVolumeSeg:
       viewer0.SetLabelVolumeID(self.movingVolumeSeg.GetID())
 
-    viewer1.SetForegroundVolumeID(self.registeredVolumes[int(name)].GetID())
+    viewer1.SetForegroundVolumeID(v1fgID)
     # if segmentation is available for the registered node, display it
     if self.fixedVolumesSegmentations[int(name)]:
       viewer1.SetLabelVolumeID(self.fixedVolumesSegmentations[int(name)].GetID())
@@ -375,8 +455,63 @@ class VisAIReWidget:
 
     viewer0.SetLinkedControl(True)
     viewer1.SetLinkedControl(True)
-    viewer0.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
-    viewer1.SetBackgroundVolumeID(self.fixedVolumes[int(name)].GetID())
+    viewer0.SetBackgroundVolumeID(bgID)
+    viewer1.SetBackgroundVolumeID(bgID)
+
+  def setupLightbox(self,fixedID,movingID):
+    lm = slicer.app.layoutManager()
+    lm.setLayout(6) # Red
+    w = lm.sliceWidget('Red')
+    cn = self.compositeNodeForWidget('Red')
+    cn.SetForegroundVolumeID(movingID)
+    cn.SetBackgroundVolumeID(fixedID)
+    slicer.app.processEvents()
+    sc = w.sliceController()
+    sc.setLightbox(3,6)
+    w.fitSliceToBackground()
+    slider = sc.children()[1].children()[-1]
+    n = w.sliceLogic().GetSliceNode()
+    fov = n.GetFieldOfView()
+    # zoom into the prostate region
+    n.SetFieldOfView(fov[0]/2.5,fov[1]/2.5,fov[2])
+    sc.setSliceOffsetValue(slider.minimum)
+
+  def initializeViews(self, name):
+    if self.viewMode == 'compare':
+      self.layoutNode.SetViewArrangement(self.CompareLayout)
+      viewer0 = self.compare0
+      viewer1 = self.compare1
+    else:
+      self.layoutNode.SetViewArrangement(self.ContouringLayout)
+      viewer0 = self.sidebyside0
+      viewer1 = self.sidebyside1
+
+    viewer0.SetLinkedControl(False)
+    viewer1.SetLinkedControl(False)
+
+    v0fgID = self.movingVolume.GetID()
+    v1fgID = self.registeredVolumes[int(name)].GetID()
+    bgID = self.fixedVolumes[int(name)].GetID()
+    print('Will be setting ids: '+v0fgID+','+v1fgID+','+bgID)
+
+    viewer0.SetForegroundVolumeID(v0fgID)
+    if self.movingVolumeSeg:
+      viewer0.SetLabelVolumeID(self.movingVolumeSeg.GetID())
+
+    viewer1.SetForegroundVolumeID(v1fgID)
+    # if segmentation is available for the registered node, display it
+    if self.fixedVolumesSegmentations[int(name)]:
+      viewer1.SetLabelVolumeID(self.fixedVolumesSegmentations[int(name)].GetID())
+    # otherwise, if the transform is available, resample the moving volume
+    # segmentation, populate the entry in the list of segmentations and
+    # initialize the view
+
+
+    viewer0.SetLinkedControl(True)
+    viewer1.SetLinkedControl(True)
+    viewer0.SetBackgroundVolumeID(bgID)
+    viewer1.SetBackgroundVolumeID(bgID)
+
 
   def onConfigFileSelected(self):
     if not self.configFile:
@@ -395,6 +530,9 @@ class VisAIReWidget:
       label = fileName
     self.configFilePicker.text = label
 
+    self.initFromFile(fileName)
+
+  def initFromFile(self, fileName):
     # parse config file and load all of the volumes referenced
     slicer.mrmlScene.Clear(0)
     self.clearForm()
@@ -417,15 +555,19 @@ class VisAIReWidget:
 
     # there should only be one moving image
     self.movingVolume = slicer.util.loadVolume(cf.get('MovingData','Image'),returnNode=True)[1]
+    dn = self.movingVolume.GetDisplayNode()
+    mwl = [dn.GetWindow(), dn.GetLevel()]
 
     # (optional) segmentation of the moving image
-    #try:
-    self.movingVolumeSeg = slicer.util.loadLabelVolume(cf.get('MovingData','Segmentation'),{},returnNode=True)[1]
-    #self.movingVolumeSeg.SetAttribute('LabelMap','1')
-    #self.movingVolumeSeg.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileGenericAnatomyColors.txt')
-    #print('Setup color node: '+self.movingVolumeSeg.GetDisplayNode().GetColorNodeID())
-    #except:
-    #  self.movingVolumeSeg = None
+    print('Set moving volume seg')
+    try:
+      self.movingVolumeSeg = slicer.util.loadLabelVolume(cf.get('MovingData','Segmentation'),{},returnNode=True)[1]
+      self.movingVolumeSeg.SetAttribute('LabelMap','1')
+      self.movingVolumeSeg.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileGenericAnatomyColors.txt')
+      print('Setup color node: '+self.movingVolumeSeg.GetDisplayNode().GetColorNodeID())
+    except:
+      print(' ... to None')
+      self.movingVolumeSeg = None
 
     # fixedVolumes: Slicer volume nodes corresponding to fixed images from the
     #   config file
@@ -446,6 +588,10 @@ class VisAIReWidget:
     for fi in fixedImageFiles:
       if re.match('Image\d+',fi):
         self.fixedVolumes.append(slicer.util.loadVolume(cf.get('FixedData',fi),returnNode=True)[1])
+        fixedDisplNode = self.fixedVolumes[-1].GetDisplayNode()
+        fixedDisplNode.SetAutoWindowLevel(0)
+        fixedDisplNode.SetWindow(mwl[0])
+        fixedDisplNode.SetLevel(mwl[1])
         self.fixedVolumeIds.append(fi.split('Image')[1])
     print('Fixed volumes: '+str(self.fixedVolumes))
 
@@ -459,6 +605,10 @@ class VisAIReWidget:
       tfmId = 'Transform'+self.fixedVolumeIds[fvId]
       try:
         self.registeredVolumes[fvId] = slicer.util.loadVolume(cf.get('RegisteredData',imageId),{},returnNode=True)[1]
+        registeredDisplNode = self.registeredVolumes[fvId].GetDisplayNode()
+        registeredDisplNode.SetAutoWindowLevel(0)
+        registeredDisplNode.SetWindow(mwl[0])
+        registeredDisplNode.SetLevel(mwl[1])
       except:
         print('Failed to read RegisteredData/'+imageId)
         pass
@@ -569,6 +719,14 @@ class VisAIReWidget:
     while item:
       parent.layout().removeItem(item)
       item = parent.layout().itemAt(0)
+
+    # delete the old widget instance
+    '''
+    widgetName = moduleName+'Widget'
+    if hasattr(globals()['slicer'].modules, widgetName):
+      getattr(globals()['slicer'].modules, widgetName).cleanup()
+    '''
+
     # create new widget inside existing parent
     globals()[widgetName.lower()] = eval(
         'globals()["%s"].%s(parent)' % (moduleName, widgetName))
